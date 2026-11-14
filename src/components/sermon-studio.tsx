@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Download, FileText, LoaderCircle, Upload, X } from "lucide-react";
 import { LanguageGrid } from "@/components/language-switcher";
 import { ExtractError, extractDocument } from "@/lib/extract-text";
-import { fill, translationBrief } from "@/lib/i18n";
+import { fill } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
 import { downloadSermonPdf, pdfFilename } from "@/lib/make-pdf";
 import { chunkMarked, downloadLayoutPdf, parseMarkerMap, readPdfLayout, stripMarkers, type PdfLayout } from "@/lib/pdf-layout";
@@ -77,7 +77,6 @@ export function SermonStudio() {
     setPdfError(false);
     setPhase("translating");
     setRatio(0);
-    const brief = translationBrief(lang, srScript);
     const parts: string[] = [];
     try {
       for (let index = 0; index < chunks.length; index += 1) {
@@ -87,8 +86,8 @@ export function SermonStudio() {
         const result = await translateChunk({
           data: {
             text: chunk,
-            targetName: brief.targetName,
-            scriptNote: brief.scriptNote,
+            lang,
+            srScript,
             continuation: index > 0,
             keepMarkers: Boolean(markedChunks),
           },

@@ -11,6 +11,30 @@ export class ExtractError extends Error {
   }
 }
 
+function sniff(data: ArrayBuffer, kind: "pdf" | "docx"): boolean {
+  const bytes = new Uint8Array(data);
+  if (kind === "pdf") {
+    return bytes.length > 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+  }
+  if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) return false;
+  const listing = new TextDecoder("latin1").decode(bytes);
+  if (!listing.includes("word/document.xml")) return false;
+  if (/vbaProject\.bin|macrosheets\/|_vba_project/i.test(listing)) return false;
+  return true;
+}
+
+export function pdfOpenOptions(data: ArrayBuffer | Uint8Array) {
+  return {
+    data: data instanceof Uint8Array ? data : new Uint8Array(data),
+    stopAtErrors: true,
+    disableAutoFetch: true,
+    disableStream: true,
+    enableXfa: false,
+    useSystemFonts: false,
+    maxImageSize: 4_000_000,
+  };
+}
+
 export async function extractDocument(file: File): Promise<string> {
   const name = file.name.toLowerCase();
   if (!name.endsWith(".docx") && !name.endsWith(".pdf")) throw new ExtractError("type");
@@ -18,6 +42,7 @@ export async function extractDocument(file: File): Promise<string> {
 
   try {
     const data = await file.arrayBuffer();
+    if (!sniff(data, name.endsWith(".docx") ? "docx" : "pdf")) throw new ExtractError("type");
     const text = name.endsWith(".docx") ? await extractDocx(data) : await extractPdf(data);
     const cleaned = text.replace(/\n{3,}/g, "\n\n").trim();
     if (cleaned.length < 40) throw new ExtractError("empty");
@@ -60,7 +85,7 @@ async function extractPdf(data: ArrayBuffer): Promise<string> {
   const pdfjs = await import("pdfjs-dist");
   const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(data) }).promise;
+  const doc = await pdfjs.getDocument(pdfOpenOptions(data)).promise;
   if (doc.numPages > MAX_PDF_PAGES) {
     await doc.cleanup();
     throw new ExtractError("long");

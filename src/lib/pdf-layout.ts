@@ -1,4 +1,5 @@
 import type { ScriptKey } from "@/lib/i18n";
+import { pdfOpenOptions } from "@/lib/extract-text";
 
 export type LayoutBox = {
   id: number;
@@ -222,7 +223,7 @@ function imageBoxes(pdfjs: Pdfjs, ops: { fnArray: number[]; argsArray: unknown[]
 export async function readPdfLayout(data: ArrayBuffer): Promise<PdfLayout | null> {
   try {
     const pdfjs = await loadPdfjs();
-    const doc = await pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) }).promise;
+    const doc = await pdfjs.getDocument(pdfOpenOptions(data.slice(0))).promise;
     if (doc.numPages > 40) {
       await doc.cleanup();
       return null;
@@ -317,7 +318,7 @@ export async function downloadLayoutPdf(options: {
   const { family, param } = fontQuery(options.script);
   await ensureFont(family, param);
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(options.data.slice(0)) }).promise;
+  const doc = await pdfjs.getDocument(pdfOpenOptions(options.data.slice(0))).promise;
   const { jsPDF } = await import("jspdf");
   let pdf: InstanceType<typeof jsPDF> | null = null;
   const scale = 2;
@@ -332,7 +333,7 @@ export async function downloadLayoutPdf(options: {
     canvas.height = Math.ceil(viewport.height);
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("canvas");
-    await page.render({ canvas, viewport }).promise;
+    await page.render({ canvas, viewport, annotationMode: 0 }).promise;
 
     const pageBoxes = options.boxes.filter((box) => box.page === pageNumber);
     const rtl = options.dir === "rtl";
