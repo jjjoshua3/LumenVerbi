@@ -32,16 +32,26 @@ function systemPrompt(data: Payload, strict: boolean): string {
   const follow = data.continuation ? "Dit is het vervolg. Herhaal de vorige tekst niet." : "";
   const force = strict ? "Je vorige antwoord was nog in de brontaal. Vertaal nu elke zin." : "";
   return [
-    `Vertaal ALLES naar het ${data.targetName}. Geen zin in de brontaal.`,
-    "Vertaal ook de titel, de liturgie, liedtitels, gebeden, de geloofsbelijdenis en de preek. Niets overslaan, niets samenvatten.",
-    "Alleen eigennamen en Bijbelverwijzingen mogen onvertaald blijven.",
+    `Vertaal ALLES naar het ${data.targetName}. Geen zin, geen woord in de brontaal of in het Engels.`,
+    "Vertaal ook de titel, liturgie, liedtitels, gebeden, geloofsbelijdenis en preek. Niets overslaan, niets samenvatten, geen zin weghalen.",
+    "Alleen persoonsnamen blijven staan. Liedtitels, 'opwekking', 'liedboek', 'coda' en Engelse woorden vertaal je wél.",
+    "Bijbelverwijzingen exact houden: 'Job 41:11-13' blijft 'Job 41:11-13'. Keer hoofdstuk en vers nooit om. Gebruik Westerse cijfers.",
+    "Liednummers exact houden met spaties: 'GK06 148: 1, 2'. Plak getallen nooit aan elkaar.",
+    "Gebruik bijbelse termen: een mestvaalt is een ashoop, geen vuilnisbelt.",
+    "Behoud leestekens. Antwoord alleen met de vertaling. Lege regel tussen alinea's. Kopjes beginnen met \"## \".",
     data.scriptNote,
     follow,
     force,
-    "Antwoord alleen met de vertaling. Lege regel tussen alinea's. Kopjes beginnen met \"## \".",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function protectRefs(text: string): string {
+  return text.replace(
+    /([A-Za-z]{1,12}\s*)?\d{1,4}(?:\s*[:.,\-–]\s*\d{1,4})+/g,
+    (match) => `\u2066${match.trim()}\u2069`,
+  );
 }
 
 function dutchLeak(text: string, targetName: string): boolean {
@@ -104,7 +114,7 @@ export const translateChunk = createServerFn({ method: "POST" })
           if (second && again.choices?.[0]?.finish_reason !== "length") text = second;
         }
       }
-      return { ok: true, text };
+      return { ok: true, text: protectRefs(text) };
     } catch {
       return { ok: false, error: "failed" };
     }
