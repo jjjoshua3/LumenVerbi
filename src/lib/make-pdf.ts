@@ -3,10 +3,11 @@ import type { SermonBlock } from "@/lib/sermon";
 
 const PAGE_W = 794;
 const PAGE_H = 1123;
-const PAD_X = 68;
-const PAD_TOP = 58;
-const FOOT_SPACE = 64;
-const CONTENT_MAX = PAGE_H - PAD_TOP - FOOT_SPACE;
+const PAD_X = 64;
+const PAD_TOP = 52;
+const FOOT_SPACE = 86;
+const BRAND_H = 34;
+const CONTENT_MAX = PAGE_H - PAD_TOP - FOOT_SPACE - BRAND_H;
 
 type Piece = { kind: "h" | "p"; text: string; height: number };
 
@@ -102,8 +103,8 @@ export async function downloadSermonPdf(options: {
   const bodyLine = options.script === "nast" ? 2.45 : isComplex ? 1.9 : 1.65;
   const headSize = options.script === "nast" ? 28 : isComplex ? 26 : 22;
   const headLine = options.script === "nast" ? 1.8 : 1.35;
-  const pCss = `margin:0 0 14px;font-size:${bodySize}px;line-height:${bodyLine};font-weight:400;font-family:"${family}",serif;`;
-  const hCss = `margin:6px 0 12px;font-size:${headSize}px;line-height:${headLine};font-weight:700;font-family:"${family}",serif;`;
+  const pCss = `margin:0 0 14px;font-size:${bodySize}px;line-height:${bodyLine};font-weight:400;font-family:"${family}",serif;overflow-wrap:anywhere;`;
+  const hCss = `margin:8px 0 12px;font-size:${headSize}px;line-height:${headLine};font-weight:700;font-family:"${family}",serif;overflow-wrap:anywhere;`;
 
   const host = document.createElement("div");
   host.setAttribute("aria-hidden", "true");

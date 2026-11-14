@@ -28,26 +28,34 @@ function asPayload(input: unknown): Payload {
   };
 }
 
-function systemPrompt(data: Payload): string {
-  const follow = data.continuation
-    ? "Dit fragment is het VERVOLG van dezelfde preek. Ga naadloos verder. Herhaal de vorige tekst niet en voeg geen titel of inleiding toe."
-    : "";
+function systemPrompt(data: Payload, strict: boolean): string {
+  const follow = data.continuation ? "Dit is het vervolg. Herhaal de vorige tekst niet." : "";
+  const force = strict ? "Je vorige antwoord was nog in de brontaal. Vertaal nu elke zin." : "";
   return [
-    `Je bent een deskundige theologische vertaler voor kerkdiensten en preken. Vertaal de onderstaande preek van de dominee zo getrouw en letterlijk mogelijk naar het ${data.targetName}, zodat de exacte boodschap, Bijbelse verwijzingen, structuur (alinea's en kopjes) en toon van de dominee volledig behouden blijven. Zorg er tegelijkertijd voor dat de zinsbouw grammaticaal klopt en natuurlijk leesbaar is voor een moedertaalspreker in het authentieke schrift van ${data.targetName}. Laat niets weg en vat niets samen.`,
+    `Vertaal ALLES naar het ${data.targetName}. Geen zin in de brontaal.`,
+    "Vertaal ook de titel, de liturgie, liedtitels, gebeden, de geloofsbelijdenis en de preek. Niets overslaan, niets samenvatten.",
+    "Alleen eigennamen en Bijbelverwijzingen mogen onvertaald blijven.",
     data.scriptNote,
     follow,
-    "Opmaak — verplicht:",
-    "- Antwoord ALLEEN met de vertaling. Geen inleiding, geen uitleg, geen aanhalingstekens eromheen.",
-    "- Zet een lege regel tussen alinea's.",
-    '- Zet elk kopje op een eigen regel die begint met "## ".',
-    "- Behoud Bijbelverwijzingen en gebruik de gebruikelijke boeknamen van de doeltaal.",
-    "- Vertaal ook gebeden, citaten en opsommingen. Sla geen zin over.",
+    force,
+    "Antwoord alleen met de vertaling. Lege regel tussen alinea's. Kopjes beginnen met \"## \".",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-async function complete(apiKey: string, data: Payload): Promise<Response> {
+function dutchLeak(text: string, targetName: string): boolean {
+  if (/nederlands/i.test(targetName)) return false;
+  const hits = text.match(
+    /\b(de|het|een|van|voor|met|dat|die|niet|zijn|heeft|wordt|onze|deze|maar|ook|als|dan)\b/gi,
+  );
+  return (hits?.length ?? 0) > 12;
+}
+
+async function complete(apiKey: string, data: Payload, strict: boolean): Promise<Response> {
+  const ask = strict
+    ? `Vertaal de volgende tekst nu volledig naar het ${data.targetName}. Geen enkele zin in de brontaal.\n\n${data.text}`
+    : `Vertaal de volgende tekst volledig naar het ${data.targetName}:\n\n${data.text}`;
   return fetch("https://api.x.ai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -57,11 +65,11 @@ async function complete(apiKey: string, data: Payload): Promise<Response> {
     signal: AbortSignal.timeout(120000),
     body: JSON.stringify({
       model: "grok-4.20-0309-non-reasoning",
-      temperature: 0.2,
+      temperature: 0.1,
       max_tokens: 8192,
       messages: [
-        { role: "system", content: systemPrompt(data) },
-        { role: "user", content: data.text },
+        { role: "system", content: systemPrompt(data, strict) },
+        { role: "user", content: ask },
       ],
     }),
   });
@@ -74,18 +82,28 @@ export const translateChunk = createServerFn({ method: "POST" })
     if (!apiKey) return { ok: false, error: "unavailable" };
 
     try {
-      let response = await complete(apiKey, data);
+      let response = await complete(apiKey, data, false);
       if (!response.ok && (response.status === 429 || response.status >= 500)) {
         await new Promise((resolve) => setTimeout(resolve, 900));
-        response = await complete(apiKey, data);
+        response = await complete(apiKey, data, false);
       }
       if (!response.ok) return { ok: false, error: "failed" };
       const body = (await response.json()) as {
         choices?: { message?: { content?: string }; finish_reason?: string }[];
       };
-      const text = body.choices?.[0]?.message?.content?.trim() ?? "";
+      let text = body.choices?.[0]?.message?.content?.trim() ?? "";
       if (!text) return { ok: false, error: "empty" };
       if (body.choices?.[0]?.finish_reason === "length") return { ok: false, error: "failed" };
+      if (dutchLeak(text, data.targetName)) {
+        const retry = await complete(apiKey, data, true);
+        if (retry.ok) {
+          const again = (await retry.json()) as {
+            choices?: { message?: { content?: string }; finish_reason?: string }[];
+          };
+          const second = again.choices?.[0]?.message?.content?.trim() ?? "";
+          if (second && again.choices?.[0]?.finish_reason !== "length") text = second;
+        }
+      }
       return { ok: true, text };
     } catch {
       return { ok: false, error: "failed" };
