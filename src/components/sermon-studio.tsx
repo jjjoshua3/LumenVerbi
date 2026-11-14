@@ -104,6 +104,7 @@ export function SermonStudio() {
       requestAnimationFrame(() => {
         document.getElementById("preek")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
+      void savePdf(parsed);
     } catch {
       setPhase(source ? "ready" : "idle");
       setError(t.errorAi);
@@ -111,13 +112,13 @@ export function SermonStudio() {
     }
   }
 
-  async function download() {
-    if (!blocks.length || makingPdf) return;
+  async function savePdf(next: typeof blocks = blocks) {
+    if (!next.length || makingPdf) return;
     setMakingPdf(true);
     setPdfError(false);
     try {
       await downloadSermonPdf({
-        blocks,
+        blocks: next,
         credit: t.pdfCredit,
         dir,
         script,
@@ -128,6 +129,10 @@ export function SermonStudio() {
     } finally {
       setMakingPdf(false);
     }
+  }
+
+  async function download() {
+    await savePdf();
   }
 
   function reset() {
