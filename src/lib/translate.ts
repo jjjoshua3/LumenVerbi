@@ -5,6 +5,7 @@ type Payload = {
   targetName: string;
   scriptNote: string;
   continuation: boolean;
+  keepMarkers: boolean;
 };
 
 type TranslateResult =
@@ -25,6 +26,7 @@ function asPayload(input: unknown): Payload {
     targetName,
     scriptNote: scriptNote.slice(0, 700),
     continuation: Boolean(data.continuation),
+    keepMarkers: Boolean(data.keepMarkers),
   };
 }
 
@@ -38,7 +40,9 @@ function systemPrompt(data: Payload, strict: boolean): string {
     "Bijbelverwijzingen exact houden: 'Job 41:11-13' blijft 'Job 41:11-13'. Keer hoofdstuk en vers nooit om. Gebruik Westerse cijfers.",
     "Liednummers exact houden met spaties: 'GK06 148: 1, 2'. Plak getallen nooit aan elkaar.",
     "Gebruik bijbelse termen: een mestvaalt is een ashoop, geen vuilnisbelt.",
-    "Behoud leestekens. Antwoord alleen met de vertaling. Lege regel tussen alinea's. Kopjes beginnen met \"## \".",
+    data.keepMarkers
+      ? "De tekst heeft markeringen [[1]], [[2]], enzovoort. Zet elke markering op een eigen regel, in dezelfde volgorde. Vertaal alleen de alinea eronder. Geen markering weglaten of toevoegen. Geen ## toevoegen."
+      : "Behoud leestekens. Antwoord alleen met de vertaling. Lege regel tussen alinea's. Kopjes beginnen met \"## \".",
     data.scriptNote,
     follow,
     force,
@@ -63,9 +67,12 @@ function dutchLeak(text: string, targetName: string): boolean {
 }
 
 async function complete(apiKey: string, data: Payload, strict: boolean): Promise<Response> {
+  const marker = data.keepMarkers
+    ? "Behoud elke markering [[nummer]] op een eigen regel en vertaal alleen de tekst eronder.\n\n"
+    : "";
   const ask = strict
-    ? `Vertaal de volgende tekst nu volledig naar het ${data.targetName}. Geen enkele zin in de brontaal.\n\n${data.text}`
-    : `Vertaal de volgende tekst volledig naar het ${data.targetName}:\n\n${data.text}`;
+    ? `${marker}Vertaal de volgende tekst nu volledig naar het ${data.targetName}. Geen enkele zin in de brontaal.\n\n${data.text}`
+    : `${marker}Vertaal de volgende tekst volledig naar het ${data.targetName}:\n\n${data.text}`;
   return fetch("https://api.x.ai/v1/chat/completions", {
     method: "POST",
     headers: {

@@ -5,6 +5,7 @@ import { ExtractError, extractDocument } from "@/lib/extract-text";
 import { fill, translationBrief } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
 import { downloadSermonPdf, pdfFilename } from "@/lib/make-pdf";
+import { chunkMarked, downloadLayoutPdf, parseMarkerMap, readPdfLayout, stripMarkers, type PdfLayout } from "@/lib/pdf-layout";
 import { chunkSermon, countWords, parseSermon, type SermonBlock } from "@/lib/sermon";
 import { translateChunk } from "@/lib/translate";
 
@@ -13,6 +14,9 @@ type Phase = "idle" | "reading" | "ready" | "translating" | "done";
 export function SermonStudio() {
   const { t, lang, srScript, script, dir } = useLocale();
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileBytes = useRef<ArrayBuffer | null>(null);
+  const placed = useRef<Map<number, string> | null>(null);
+  const [layout, setLayout] = useState<PdfLayout | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -47,6 +51,11 @@ export function SermonStudio() {
     setFileName(file.name);
     try {
       const text = await extractDocument(file);
+      const bytes = file.name.toLowerCase().endsWith(".pdf") ? await file.arrayBuffer() : null;
+      fileBytes.current = bytes;
+      placed.current = null;
+      const nextLayout = bytes ? await readPdfLayout(bytes.slice(0)) : null;
+      setLayout(nextLayout);
       setSource(text);
       setPhase("ready");
     } catch (caught) {
@@ -58,7 +67,8 @@ export function SermonStudio() {
 
   async function translate() {
     if (!source || phase === "translating") return;
-    const chunks = chunkSermon(source);
+    const markedChunks = layout ? chunkMarked(layout.marked) : null;
+    const chunks = markedChunks ?? chunkSermon(source);
     if (!chunks) {
       setError(t.errorLong);
       return;
@@ -80,6 +90,7 @@ export function SermonStudio() {
             targetName: brief.targetName,
             scriptNote: brief.scriptNote,
             continuation: index > 0,
+            keepMarkers: Boolean(markedChunks),
           },
         });
         if (!result.ok) {
@@ -90,7 +101,9 @@ export function SermonStudio() {
         }
         parts.push(result.text);
       }
-      const parsed = parseSermon(parts.join("\n\n"));
+      const joined = parts.join("\n\n");
+      placed.current = layout && markedChunks ? parseMarkerMap(joined, layout.boxes) : null;
+      const parsed = parseSermon(stripMarkers(joined));
       if (parsed.length === 0) {
         setPhase("ready");
         setError(t.errorAi);
@@ -117,6 +130,22 @@ export function SermonStudio() {
     setMakingPdf(true);
     setPdfError(false);
     try {
+      if (layout && fileBytes.current && placed.current) {
+        try {
+          await downloadLayoutPdf({
+            data: fileBytes.current,
+            boxes: layout.boxes,
+            texts: placed.current,
+            dir,
+            script,
+            credit: t.pdfCredit,
+            filename: pdfFilename(fileName),
+          });
+          return;
+        } catch {
+          /* The original layout could not hold the translation. */
+        }
+      }
       await downloadSermonPdf({
         blocks: next,
         credit: t.pdfCredit,
@@ -140,6 +169,9 @@ export function SermonStudio() {
     setSource("");
     setBlocks([]);
     setFileName("");
+    setLayout(null);
+    fileBytes.current = null;
+    placed.current = null;
     setError("");
     setPdfError(false);
     setProgress("");
