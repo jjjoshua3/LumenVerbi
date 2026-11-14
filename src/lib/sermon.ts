@@ -45,7 +45,7 @@ function stripMarks(text: string): string {
   return text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/(^|\s)\*(.+?)\*(?=\s|$)/g, "$1$2").trim();
 }
 
-const CHUNK = 7000;
+const CHUNK = 2800;
 const MAX_CHUNKS = 10;
 
 export function chunkSermon(text: string): string[] | null {

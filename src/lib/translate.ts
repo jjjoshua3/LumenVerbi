@@ -56,7 +56,7 @@ async function complete(apiKey: string, data: Payload): Promise<Response> {
     },
     signal: AbortSignal.timeout(120000),
     body: JSON.stringify({
-      model: "grok-4.5",
+      model: "grok-4.20-0309-non-reasoning",
       temperature: 0.2,
       max_tokens: 8192,
       messages: [
